@@ -41,11 +41,31 @@ export default function ScreenshotAnalysisPage() {
       const fd = new FormData();
       for (const f of list) fd.append("file", f);
       const res = await fetch("/api/screenshot", { method: "POST", body: fd });
-      const json = await res.json();
+
+      // The server normally returns JSON, but a hard serverless failure
+      // (timeout/OOM/crash) returns a plain-text error page. Read the body as
+      // text first so we never blow up on JSON.parse and can show a real message.
+      const raw = await res.text();
+      let json: {
+        datasetId?: string;
+        dictionary?: DataDictionary;
+        extraction?: ScreenshotExtraction;
+        dataset?: DatasetPayload;
+        error?: string;
+      } = {};
+      try {
+        json = raw ? JSON.parse(raw) : {};
+      } catch {
+        throw new Error(
+          res.ok
+            ? "The server returned an unexpected response. Please try again."
+            : `Screenshot processing failed (HTTP ${res.status}). This often happens when OCR times out on the server — try a smaller or sharper image.`,
+        );
+      }
       if (!res.ok) throw new Error(json.error ?? "Upload failed.");
-      setDatasetId(json.datasetId);
-      setDictionary(json.dictionary);
-      setExtraction(json.extraction);
+      setDatasetId(json.datasetId ?? null);
+      setDictionary(json.dictionary ?? null);
+      setExtraction(json.extraction ?? null);
       setDataset(json.dataset ?? null);
     } catch (e) {
       setUploadError(e instanceof Error ? e.message : "Upload failed.");

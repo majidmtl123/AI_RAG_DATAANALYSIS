@@ -196,6 +196,12 @@ permissions, so review before executing anything they instruct.
 - **Provider/model:** Anthropic direct via `@ai-sdk/anthropic`, model
   `claude-sonnet-4-6` (`lib/agents/analyst-agent.ts`, `ANALYST_MODEL`). Reads
   `ANTHROPIC_API_KEY` from `.env.local` (copied from `.env`; both gitignored).
+- **Prompt caching:** both agents wrap their (large) system prompt via
+  `cachedSystem()` (`lib/agents/cache.ts`) → `instructions` is a
+  `SystemModelMessage` with `providerOptions.anthropic.cacheControl =
+  { type: 'ephemeral', ttl: '1h' }`. The system prompt (data dictionary + helper
+  docs + format) is cached, so follow-up turns/tool-loop steps reuse it
+  (`cacheReadTokens` in usage logs). Verified: turn 1 writes cache, turn 2 reads.
 - **Sandbox:** `lib/analysis/sandbox.ts` runs model code in a `worker_threads`
   worker + `node:vm` context (no require/fs/net/timers), 5s timeout, 256MB cap,
   output capped to 1000 rows. Chose worker+vm over `isolated-vm` to avoid native
@@ -243,6 +249,23 @@ permissions, so review before executing anything they instruct.
     temp file), not a Buffer — Buffer input triggered the same path error.
   - First OCR run downloads `eng.traineddata` (cached in `.tesseract-cache/`,
     gitignored). Worker is cached on globalThis across requests/hot-reloads.
+  - **Serverless (Vercel) cache path:** the deployment FS is read-only except the
+    OS temp dir, so `resolvePaths()` puts the lang-data cache in
+    `os.tmpdir()/tesseract-cache` when `VERCEL`/`AWS_LAMBDA_FUNCTION_NAME` is set
+    (project-local `.tesseract-cache/` only locally). `getWorker()` `mkdir -p`s
+    the cache dir first and clears the cached promise on failure so a later
+    request can retry.
+  - **Bundle tracing:** because tesseract.js/sharp are in
+    `serverExternalPackages`, Next doesn't analyze their internal requires, so
+    Vercel's file tracer can miss the worker script/wasm/native libs. Added
+    `outputFileTracingIncludes` in `next.config.ts` for `/api/screenshot` (+
+    `/api/screenshot-chat`) covering `tesseract.js`, `tesseract.js-core`, `sharp`,
+    `@img`.
+  - **Client never JSON.parses a crash page:** a hard serverless failure
+    (timeout/OOM) returns a plain-text page ("An error o…"), which broke the
+    client's `res.json()` ("Unexpected token 'A'… is not valid JSON"). The
+    screenshot page now reads the body as text and only `JSON.parse`s in a
+    try/catch, surfacing a real message instead.
 - **Routes:** `app/api/screenshot/route.ts` (multi-file OCR→extract→store, max 6
   images/10MB), `app/api/screenshot-chat/route.ts` (screenshot agent). Agent in
   `lib/agents/screenshot-agent.ts`. Output = 6-part format (Direct Answer · Key

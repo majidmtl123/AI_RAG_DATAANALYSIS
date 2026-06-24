@@ -2,6 +2,7 @@ import { ToolLoopAgent, stepCountIs, type InferAgentUIMessage } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
 import { analyzeData } from "@/lib/tools/analyze-data";
 import { HELPERS_DOC } from "@/lib/analysis/helpers";
+import { cachedSystem } from "@/lib/agents/cache";
 import { createLogger } from "@/lib/logger";
 import type { DataDictionary } from "@/lib/types";
 
@@ -29,7 +30,10 @@ export function createAnalystAgent(dictionary: DataDictionary, context: unknown)
     model: anthropic(ANALYST_MODEL),
     tools: TOOLS,
     stopWhen: stepCountIs(8),
-    instructions: buildInstructions(dictionary),
+    // The system prompt embeds the (large) data dictionary + helper docs and is
+    // re-sent on every conversation turn, so we mark it for Anthropic prompt
+    // caching — follow-up questions reuse the cached prefix at lower cost.
+    instructions: cachedSystem(buildInstructions(dictionary)),
     experimental_context: context,
     onStepFinish: (step) => {
       log.debug("Step finished", {

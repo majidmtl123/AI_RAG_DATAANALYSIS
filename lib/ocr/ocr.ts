@@ -37,10 +37,20 @@ function resolvePaths() {
   } catch {
     // fall back to cwd/node_modules paths above
   }
+
+  // The lang-data cache must be in a WRITABLE directory. On Vercel (and most
+  // serverless platforms) the deployment filesystem is read-only except for the
+  // OS temp dir, so use that there. Locally we keep the project-local cache so
+  // the (~10-15MB) eng.traineddata download persists across restarts.
+  const isServerless = !!process.env.VERCEL || !!process.env.AWS_LAMBDA_FUNCTION_NAME;
+  const cachePath = isServerless
+    ? path.join(os.tmpdir(), "tesseract-cache")
+    : path.join(process.cwd(), ".tesseract-cache");
+
   return {
     workerPath: path.join(tessDir, "src", "worker-script", "node", "index.js"),
     corePath: coreDir,
-    cachePath: path.join(process.cwd(), ".tesseract-cache"),
+    cachePath,
   };
 }
 
@@ -48,10 +58,20 @@ function getWorker(): Promise<Worker> {
   if (!globalForOcr.__ocrWorker) {
     const paths = resolvePaths();
     log.info("Creating Tesseract worker (eng)", paths);
-    globalForOcr.__ocrWorker = createWorker("eng", undefined, {
-      workerPath: paths.workerPath,
-      corePath: paths.corePath,
-      cachePath: paths.cachePath,
+    globalForOcr.__ocrWorker = (async () => {
+      // Ensure the (writable) cache dir exists before the worker tries to
+      // download/read eng.traineddata into it.
+      await fs.mkdir(paths.cachePath, { recursive: true }).catch(() => {});
+      return createWorker("eng", undefined, {
+        workerPath: paths.workerPath,
+        corePath: paths.corePath,
+        cachePath: paths.cachePath,
+      });
+    })();
+    // If worker creation fails, don't cache the rejected promise — clear it so
+    // a later request can retry instead of failing forever.
+    globalForOcr.__ocrWorker.catch(() => {
+      globalForOcr.__ocrWorker = undefined;
     });
   }
   return globalForOcr.__ocrWorker;

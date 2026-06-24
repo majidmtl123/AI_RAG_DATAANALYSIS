@@ -2,6 +2,7 @@ import { ToolLoopAgent, stepCountIs, type InferAgentUIMessage } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
 import { analyzeData } from "@/lib/tools/analyze-data";
 import { HELPERS_DOC } from "@/lib/analysis/helpers";
+import { cachedSystem } from "@/lib/agents/cache";
 import { createLogger } from "@/lib/logger";
 import type { DataDictionary, ScreenshotExtraction } from "@/lib/types";
 
@@ -32,7 +33,8 @@ export function createScreenshotAgent(
     model: anthropic(SCREENSHOT_MODEL),
     tools: TOOLS,
     stopWhen: stepCountIs(8),
-    instructions: buildInstructions(dictionary, extraction),
+    // Cache the large system prompt (extraction context) for follow-up turns.
+    instructions: cachedSystem(buildInstructions(dictionary, extraction)),
     experimental_context: context,
     onStepFinish: (step) => {
       log.debug("Step finished", {
