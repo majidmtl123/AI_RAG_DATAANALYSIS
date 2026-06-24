@@ -65,6 +65,20 @@ export interface StoredDataset {
   extraction?: ScreenshotExtraction;
 }
 
+/**
+ * Dataset payload returned to the client on upload and round-tripped back with
+ * each chat request. Lets the app work on stateless/serverless platforms where
+ * the upload and chat run in different instances (no shared in-memory store).
+ */
+export interface DatasetPayload {
+  id: string;
+  fileName: string;
+  data: WorkbookData;
+  dictionary: DataDictionary;
+  source: "excel" | "screenshot";
+  extraction?: ScreenshotExtraction;
+}
+
 /** Metadata extracted from a chart/visualization in a screenshot. */
 export interface ChartMeta {
   title: string;

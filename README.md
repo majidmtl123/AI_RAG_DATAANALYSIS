@@ -165,12 +165,14 @@ After adding or changing variables you must **redeploy** — env changes do not
 apply to existing deployments. (A missing `APP_PASSWORD`/`AUTH_SECRET` is what
 produces the "Auth is not configured on the server" message.)
 
-> **Serverless caveats:** on Vercel's serverless runtime the **in-memory dataset
-> store does not persist between invocations**, and the **screenshot OCR tool**
-> (`tesseract.js` + `sharp`, which download data and write temp files) may fail
-> or time out. The Excel tool and authentication work, but for reliable
-> production use of both tools, run on a long-lived server/container and back the
-> dataset store with durable storage (KV/Redis/DB).
+> **Serverless note:** on Vercel the in-memory dataset store is not shared
+> between function instances, so upload and chat can land on different instances.
+> To handle this, the client round-trips the parsed dataset with each chat
+> request and the server rehydrates it (`putDataset`) when the store misses — so
+> the Excel tool and auth work on serverless without extra infra. The
+> **screenshot OCR tool** (`tesseract.js` + `sharp`) still downloads data and
+> writes temp files at runtime, which may fail or time out on serverless; for
+> reliable production OCR run on a long-lived server/container.
 
 ## Notes & limitations
 

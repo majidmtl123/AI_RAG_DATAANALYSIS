@@ -1,8 +1,9 @@
 import { convertToModelMessages, type UIMessage } from "ai";
 import { NextResponse } from "next/server";
 import { createScreenshotAgent } from "@/lib/agents/screenshot-agent";
-import { getDataset } from "@/lib/store/datasets";
+import { getDataset, putDataset } from "@/lib/store/datasets";
 import type { AnalysisContext } from "@/lib/tools/analyze-data";
+import type { DatasetPayload } from "@/lib/types";
 import { createLogger } from "@/lib/logger";
 
 export const runtime = "nodejs";
@@ -13,6 +14,8 @@ const log = createLogger("api/screenshot-chat");
 interface ChatRequestBody {
   messages: UIMessage[];
   datasetId?: string;
+  /** Full dataset, round-tripped by the client for stateless/serverless use. */
+  dataset?: DatasetPayload;
 }
 
 function lastUserText(messages: UIMessage[]): string {
@@ -40,7 +43,11 @@ export async function POST(req: Request): Promise<Response> {
     return NextResponse.json({ error: "No datasetId. Upload screenshots first." }, { status: 400 });
   }
 
-  const dataset = getDataset(body.datasetId);
+  let dataset = getDataset(body.datasetId);
+  if (!dataset && body.dataset && body.dataset.id === body.datasetId) {
+    dataset = putDataset(body.dataset);
+    log.info("Rehydrated dataset from client payload", { datasetId: body.datasetId });
+  }
   if (!dataset) {
     log.warn("Dataset not found or expired", { datasetId: body.datasetId });
     return NextResponse.json(

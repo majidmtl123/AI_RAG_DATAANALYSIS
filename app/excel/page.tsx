@@ -4,7 +4,7 @@ import { useRef, useState } from "react";
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport, isToolUIPart } from "ai";
 import type { AnalystUIMessage } from "@/lib/agents/analyst-agent";
-import type { DataDictionary } from "@/lib/types";
+import type { DataDictionary, DatasetPayload } from "@/lib/types";
 import { renderMarkdown } from "@/lib/markdown";
 
 const SAMPLE_QUESTIONS = [
@@ -19,6 +19,7 @@ const SAMPLE_QUESTIONS = [
 export default function ExcelAnalysisPage() {
   const [datasetId, setDatasetId] = useState<string | null>(null);
   const [dictionary, setDictionary] = useState<DataDictionary | null>(null);
+  const [dataset, setDataset] = useState<DatasetPayload | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [input, setInput] = useState("");
@@ -41,10 +42,12 @@ export default function ExcelAnalysisPage() {
       if (!res.ok) throw new Error(json.error ?? "Upload failed.");
       setDatasetId(json.datasetId);
       setDictionary(json.dictionary);
+      setDataset(json.dataset ?? null);
     } catch (e) {
       setUploadError(e instanceof Error ? e.message : "Upload failed.");
       setDatasetId(null);
       setDictionary(null);
+      setDataset(null);
     } finally {
       setUploading(false);
     }
@@ -52,8 +55,9 @@ export default function ExcelAnalysisPage() {
 
   function ask(question: string) {
     if (!datasetId || busy || !question.trim()) return;
-    // Pass datasetId per request so the server always gets the current value.
-    sendMessage({ text: question }, { body: { datasetId } });
+    // Send datasetId + the full dataset so the server can rehydrate it on
+    // stateless/serverless instances where the in-memory store is empty.
+    sendMessage({ text: question }, { body: { datasetId, dataset } });
     setInput("");
   }
 

@@ -4,7 +4,7 @@ import { useRef, useState } from "react";
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport, isToolUIPart } from "ai";
 import type { ScreenshotUIMessage } from "@/lib/agents/screenshot-agent";
-import type { DataDictionary, ScreenshotExtraction } from "@/lib/types";
+import type { DataDictionary, DatasetPayload, ScreenshotExtraction } from "@/lib/types";
 import { renderMarkdown } from "@/lib/markdown";
 
 const SAMPLE_QUESTIONS = [
@@ -20,6 +20,7 @@ export default function ScreenshotAnalysisPage() {
   const [datasetId, setDatasetId] = useState<string | null>(null);
   const [dictionary, setDictionary] = useState<DataDictionary | null>(null);
   const [extraction, setExtraction] = useState<ScreenshotExtraction | null>(null);
+  const [dataset, setDataset] = useState<DatasetPayload | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [input, setInput] = useState("");
@@ -45,11 +46,13 @@ export default function ScreenshotAnalysisPage() {
       setDatasetId(json.datasetId);
       setDictionary(json.dictionary);
       setExtraction(json.extraction);
+      setDataset(json.dataset ?? null);
     } catch (e) {
       setUploadError(e instanceof Error ? e.message : "Upload failed.");
       setDatasetId(null);
       setDictionary(null);
       setExtraction(null);
+      setDataset(null);
     } finally {
       setUploading(false);
     }
@@ -57,7 +60,8 @@ export default function ScreenshotAnalysisPage() {
 
   function ask(question: string) {
     if (!datasetId || busy || !question.trim()) return;
-    sendMessage({ text: question }, { body: { datasetId } });
+    // Round-trip the full dataset so the server can rehydrate it on serverless.
+    sendMessage({ text: question }, { body: { datasetId, dataset } });
     setInput("");
   }
 

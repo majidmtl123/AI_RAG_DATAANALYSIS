@@ -56,7 +56,19 @@ export async function POST(req: Request): Promise<Response> {
       relationships: dictionary.relationships.length,
     });
 
-    return NextResponse.json({ datasetId: dataset.id, dictionary });
+    // Return the full dataset payload so the client can round-trip it on chat
+    // (keeps the app working on stateless serverless instances).
+    return NextResponse.json({
+      datasetId: dataset.id,
+      dictionary,
+      dataset: {
+        id: dataset.id,
+        fileName: dataset.fileName,
+        data: dataset.data,
+        dictionary: dataset.dictionary,
+        source: dataset.source,
+      },
+    });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Failed to read the file.";
     log.error("Parse failed", { name: file.name, error: message });

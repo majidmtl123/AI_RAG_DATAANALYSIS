@@ -51,6 +51,35 @@ export function getDataset(id: string): StoredDataset | undefined {
   return dataset;
 }
 
+/**
+ * Rehydrate a dataset into the store from a client-provided payload. Used on
+ * serverless platforms (e.g. Vercel) where the upload and chat requests may run
+ * in different instances, so the in-memory store from upload is not visible to
+ * the chat request. The client round-trips the parsed dataset and we restore it.
+ */
+export function putDataset(dataset: {
+  id: string;
+  fileName: string;
+  data: WorkbookData;
+  dictionary: DataDictionary;
+  source?: StoredDataset["source"];
+  extraction?: StoredDataset["extraction"];
+}): StoredDataset {
+  evictExpired();
+  evictOldestIfFull();
+  const stored: StoredDataset = {
+    id: dataset.id,
+    fileName: dataset.fileName,
+    data: dataset.data,
+    dictionary: dataset.dictionary,
+    createdAt: Date.now(),
+    source: dataset.source ?? "excel",
+    extraction: dataset.extraction,
+  };
+  store.set(stored.id, stored);
+  return stored;
+}
+
 function evictExpired(): void {
   const now = Date.now();
   for (const [id, dataset] of store) {

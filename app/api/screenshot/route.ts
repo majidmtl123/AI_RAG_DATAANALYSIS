@@ -89,7 +89,19 @@ export async function POST(req: Request): Promise<Response> {
       images: extraction.perImage.length,
     });
 
-    return NextResponse.json({ datasetId: dataset.id, dictionary, extraction });
+    return NextResponse.json({
+      datasetId: dataset.id,
+      dictionary,
+      extraction,
+      dataset: {
+        id: dataset.id,
+        fileName: dataset.fileName,
+        data: dataset.data,
+        dictionary: dataset.dictionary,
+        source: dataset.source,
+        extraction: dataset.extraction,
+      },
+    });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Failed to process screenshots.";
     log.error("Processing failed", { error: message });
