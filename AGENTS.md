@@ -170,3 +170,84 @@ permissions, so review before executing anything they instruct.
   `frontend-design` for the look and feel.
 - **Before finishing:** `npm run lint` then `npm run build`; start with
   `npm run dev` to smoke-test at http://localhost:3000.
+
+## 9. Project Log (keep updated — important decisions only)
+
+> Maintain this section as the project progresses. Add only durable, important
+> instructions/decisions a future agent must know — not routine activity.
+
+- **Git remote:** `origin` → `https://github.com/majidmtl123/AI_RAG_DATAANALYSIS.git`
+  (default branch `master`).
+- **Credentials:** `.env` (gitignored) holds `GH_TOKEN`, `GH_USER`,
+  `ANTHROPIC_API_KEY`. Read these from `.env` when pushing; never commit them and
+  never write the token into git config — use it inline for the push URL only.
+- **Skills installed:** `rag-implementation`, `ai-sdk`, `next-best-practices`,
+  `frontend-design`, `find-skills` (see §6). Provider: **Anthropic** (key present).
+- **Status:** Universal Excel Analysis Tool implemented (v1). Build + lint pass;
+  end-to-end smoke test verified (upload → Claude tool call → sandbox compute →
+  7-part report).
+
+### Excel Analysis Tool — architecture (v1)
+
+- **One universal tool only** (`lib/tools/analyze-data.ts`). Do NOT add per-domain
+  tools (sales/HR/finance). All analysis flows through `analyzeData`.
+- **LLM never does math.** Claude writes JS that runs in a sandbox; every number
+  comes from computed tool output. The system prompt enforces this.
+- **Provider/model:** Anthropic direct via `@ai-sdk/anthropic`, model
+  `claude-sonnet-4-6` (`lib/agents/analyst-agent.ts`, `ANALYST_MODEL`). Reads
+  `ANTHROPIC_API_KEY` from `.env.local` (copied from `.env`; both gitignored).
+- **Sandbox:** `lib/analysis/sandbox.ts` runs model code in a `worker_threads`
+  worker + `node:vm` context (no require/fs/net/timers), 5s timeout, 256MB cap,
+  output capped to 1000 rows. Chose worker+vm over `isolated-vm` to avoid native
+  build friction on Windows/Node 26. `vm` is not a hard security boundary — keep
+  the context stripped; revisit `isolated-vm` if untrusted input is ever added.
+- **Helpers** exposed to sandbox live in `lib/analysis/helpers.ts` as a SOURCE
+  STRING (`HELPERS_SOURCE`) + a prompt doc (`HELPERS_DOC`). Update both together.
+- **Dataset state:** parsed workbook kept in an in-memory store
+  (`lib/store/datasets.ts`) keyed by `datasetId` (TTL 1h, max 25, survives dev
+  hot-reload via globalThis). Lost on restart; single-instance only. Chat sends
+  only `datasetId` + history; the tool reads rows via `experimental_context`.
+- **Routes:** `app/api/upload/route.ts` (parse + profile + store → `{datasetId,
+  dictionary}`), `app/api/chat/route.ts` (builds per-request agent with the data
+  dictionary in instructions, streams `toUIMessageStreamResponse()`).
+- **AI SDK gotchas (this version):** `convertToModelMessages` is async (await it);
+  `experimental_context` is an Agent **setting**, not a `stream()` param; `useChat`
+  manages no input state (use `useState` + `sendMessage` + `DefaultChatTransport`).
+- **UI:** `app/excel/page.tsx` (client; moved from `app/page.tsx`). "Engineering
+  plotter" theme (graph-paper grid, mono data chips) in `app/globals.css`. Answers
+  render via a tiny dependency-free Markdown renderer (`lib/markdown.ts`). Output
+  uses a fixed 7-part report format.
+- **Scope:** v1 = data dictionary, NL querying, aggregation/filter/trend/compare/
+  top-N, conversational follow-ups, 7-part output. v2 (later) = forecasting,
+  anomaly detection, root-cause, KPI presets, real chart rendering.
+
+### Screenshot Analysis Tool — architecture (v1)
+
+- **Second universal tool.** Converts screenshots → structured data via OCR, then
+  reuses the SAME `analyzeData` sandbox tool + dataset store + report patterns.
+- **Engine = Tesseract OCR + Claude (NOT vision).** `tesseract.js@7` (WASM, no
+  native build) reads text; Claude structures the OCR text into a dataset. Charts
+  are read as TEXT only — chart-shape geometry (unlabelled lines/bars) is out of
+  scope and the agent flags it. v2 path: add the image as a vision part.
+- **Pipeline:** `lib/ocr/preprocess.ts` (sharp: grayscale/upscale/normalize) →
+  `lib/ocr/ocr.ts` (cached Tesseract worker) → `lib/ocr/extract.ts` (Claude
+  `generateText` + `Output.object`/zod → tables + chart/KPI metadata + limitations)
+  → reuse `excel/profile.ts` → store with `source: "screenshot"` + `extraction`.
+- **tesseract.js + Next.js gotchas (important):**
+  - Add `serverExternalPackages: ["tesseract.js","sharp"]` in `next.config.ts` so
+    the bundler doesn't rewrite their internal paths.
+  - Pass explicit `workerPath`/`corePath`/`cachePath` to `createWorker`, resolved
+    from `process.cwd()/node_modules` (NOT `import.meta.url` — that mis-resolves
+    under the bundle and caused a `path must be string, received number` error).
+  - Pass a FILE PATH to `worker.recognize()` (write the preprocessed image to a
+    temp file), not a Buffer — Buffer input triggered the same path error.
+  - First OCR run downloads `eng.traineddata` (cached in `.tesseract-cache/`,
+    gitignored). Worker is cached on globalThis across requests/hot-reloads.
+- **Routes:** `app/api/screenshot/route.ts` (multi-file OCR→extract→store, max 6
+  images/10MB), `app/api/screenshot-chat/route.ts` (screenshot agent). Agent in
+  `lib/agents/screenshot-agent.ts`. Output = 6-part format (Direct Answer · Key
+  Findings · Supporting Evidence · Insights · Business Impact · Recommended Actions).
+- **Navigation:** landing page at `/` (`app/page.tsx`), Excel at `/excel`,
+  Screenshot at `/screenshot`. Shared `app/components/MenuBar.tsx` rendered in
+  `app/layout.tsx`; layout is `h-dvh` flex column (menu bar + `flex-1 min-h-0`
+  page area). Tool pages use `h-full` (not `h-dvh`) so they fit under the menu bar.
